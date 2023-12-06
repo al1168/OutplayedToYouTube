@@ -7,6 +7,7 @@
 Client ID : 1037465814913-7oklnlu5f8u8b6308b9vk131vv134o86.apps.googleusercontent.com
 Client secret: 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
 """
+import os
 import sys
 import logging
 
@@ -122,6 +123,8 @@ def main(request_payload):
             description=description,
             file_path=file_path,
         )
+        os.remove(file_path)
+
     except Exception as e:
         # Log the exception details
         logging.error("An error occurred during video processing: %s", e)
