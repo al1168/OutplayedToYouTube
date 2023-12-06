@@ -3,21 +3,13 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
-"""
-Client ID : 1037465814913-7oklnlu5f8u8b6308b9vk131vv134o86.apps.googleusercontent.com
-Client secret: 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
-"""
-import os
-import sys
 import logging
+import os
 
 import googleapiclient
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-import google_auth_oauthlib.flow
 import requests
 from bs4 import BeautifulSoup
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.discovery import build
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -31,6 +23,13 @@ CLIENT_SECRETS_FILE = "client_secrets.json"
 
 
 def upload_video(youtube_service_obj, title="", description="", file_path=""):
+    """
+    :param youtube_service_obj:
+    :param title:
+    :param description:
+    :param file_path:
+    :return: response
+    """
     if youtube_service_obj is None:
         raise Exception("no youtube Service obj")
     youtube_insert_body = dict(
@@ -48,10 +47,15 @@ def upload_video(youtube_service_obj, title="", description="", file_path=""):
         media_body=googleapiclient.http.MediaFileUpload(file_path),
     )
     response = insert_request.execute()
-    return
+    return response
 
 
 def get_video_src(page_url):
+    """
+
+    :param page_url:
+    :return:
+    """
     try:
         response = requests.get(page_url)
         soup = BeautifulSoup(response.text, "html.parser")
@@ -64,6 +68,12 @@ def get_video_src(page_url):
 
 
 def download_outplayed_video(video_src_url, index):
+    """
+
+    :param video_src_url:
+    :param index:
+    :return:
+    """
     try:
         response = requests.get(video_src_url, stream=True)
         if response.status_code == 200:
@@ -84,6 +94,11 @@ def download_outplayed_video(video_src_url, index):
 
 
 def get_youtube_service(credentials):
+    """
+
+    :param credentials:
+    :return:
+    """
     youtube_service = build(
         serviceName=API_SERVICE_NAME, version=API_VERSION, credentials=credentials
     )
@@ -91,6 +106,10 @@ def get_youtube_service(credentials):
 
 
 def get_google_authentication():
+    """
+
+    :return:
+    """
     flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
         CLIENT_SECRETS_FILE, SCOPES
     )
@@ -99,6 +118,11 @@ def get_google_authentication():
 
 
 def main(request_payload):
+    """
+
+    :param request_payload: dict
+    :return:
+    """
     url = request_payload.get("outplayed_url", None)
     title = request_payload.get("title", None)
     description = request_payload.get("description", None)
@@ -112,9 +136,7 @@ def main(request_payload):
         video_src = get_video_src(url)
         file_path = download_outplayed_video(video_src, 1)
         if file_path is False:
-            logging.error(
-                f"FAILED to download Video for request_payload {request_payload}"
-            )
+            logging.error("FAILED to download Video for request_payload %s", request_payload)
             return
         logging.info("Video downloaded successfully")
         upload_video(
@@ -144,6 +166,5 @@ if __name__ == "__main__":
         user_input = input()
         payload[payload_key] = user_input
     main(payload)
-
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
