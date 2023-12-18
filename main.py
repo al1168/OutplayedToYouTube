@@ -5,16 +5,18 @@
 
 import logging
 import os
-
+from fastapi import FastAPI, HTTPException
+import google_auth_oauthlib
 import googleapiclient
 import requests
 from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
+from fastapi.middleware.cors import CORSMiddleware
+from google.oauth2.credentials import Credentials
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 API_SERVICE_NAME = "youtube"
@@ -40,13 +42,13 @@ def upload_video(youtube_service_obj, title="", description="", file_path=""):
         ),
         status=dict(privacyStatus="unlisted"),
     )
-
     insert_request = youtube_service_obj.videos().insert(
         part="snippet,status",
         body=youtube_insert_body,
         media_body=googleapiclient.http.MediaFileUpload(file_path),
     )
     response = insert_request.execute()
+    logging.info("THIS IS RESPONSE %s", response)
     return response
 
 
@@ -57,11 +59,12 @@ def get_video_src(page_url):
     :return:
     """
     try:
+        # print(page_url)
         response = requests.get(page_url)
         soup = BeautifulSoup(response.text, "html.parser")
         video_main = soup.find(class_="video-main")
         video_tag = soup.find("video")
-
+        print(f"THIS IS PAGE URL {page_url} THIS IS VIDEO TAG {video_tag}")
         return video_tag.get("src", None)
     except Exception as e:
         logging.error("ERROR IN getting video_src from url", page_url)
@@ -93,9 +96,16 @@ def download_outplayed_video(video_src_url, index):
         return False
 
 
+from pydantic import BaseModel
+
+
+def get_youtube_client(access_token: str):
+    credentials = Credentials(token=access_token)
+    return build("youtube", "v3", credentials=credentials)
+
+
 def get_youtube_service(credentials):
     """
-
     :param credentials:
     :return:
     """
@@ -113,11 +123,13 @@ def get_google_authentication():
     flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
         CLIENT_SECRETS_FILE, SCOPES
     )
-    credentials = flow.run_local_server(port=0)
+    credentials = flow.run_local_server()
     return credentials
 
 
 def main(request_payload):
+    # pass
+
     """
 
     :param request_payload: dict
@@ -136,15 +148,19 @@ def main(request_payload):
         video_src = get_video_src(url)
         file_path = download_outplayed_video(video_src, 1)
         if file_path is False:
-            logging.error("FAILED to download Video for request_payload %s", request_payload)
+            logging.error(
+                "FAILED to download Video for request_payload %s", request_payload
+            )
             return
-        logging.info("Video downloaded successfully")
-        upload_video(
+
+        logging.info("Video downloaded successfully %s", file_path)
+        response = upload_video(
             youtube_service_obj=client_youtube_service,
             title=title,
             description=description,
             file_path=file_path,
         )
+
         os.remove(file_path)
 
     except Exception as e:
@@ -154,6 +170,71 @@ def main(request_payload):
 
 
 # Press the green button in the gutter to run the script.
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+
+class UploadPayLoad(BaseModel):
+    token: str
+    url: str
+    title: str
+    description: str
+
+
+@app.post("/upload_videos")
+async def upload_video_endpoint(payload: UploadPayLoad):
+    print(payload)
+    token, url, title, description = payload
+    # print(token)
+    # Your logic here
+    # get_video_src(url[1])
+    print(f"THIS IS REQUEST TITLE:{title}")
+    print(f"THIS IS REQUEST DESCRIPTION:{description}")
+    youtube_client = get_youtube_client(token[1])
+    if url is None:
+        logging.error("No 'outplayed_url' found in the request payload")
+        return
+    try:
+        # Attempt to retrieve video source and download the video
+        video_src = get_video_src(url[1])
+        file_path = download_outplayed_video(video_src, 1)
+        if file_path is False:
+            logging.error(
+                "FAILED to download Video for request_payload",
+            )
+            return
+        logging.info("Video downloaded successfully %s", file_path)
+        print(youtube_client)
+        upload_video(
+            youtube_service_obj=youtube_client,
+            title=title[1],
+            description=description[1],
+            file_path=file_path,
+        )
+        os.remove(file_path)
+
+    except Exception as e:
+        # Log the exception details
+        # os.remove(file_path)
+        logging.error("An error occurred during video processing: %s", e)
+        # Optionally, you might want to re-raise the exception or handle it differently
+        raise HTTPException(
+            status_code=404, detail=f"An error occurred during video processing: {e}"
+        )
+    return {"message": f"Sucesss!"}
+
+
 if __name__ == "__main__":
     payload = {}
     questions = {
@@ -166,5 +247,6 @@ if __name__ == "__main__":
         user_input = input()
         payload[payload_key] = user_input
     main(payload)
+# pass
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
